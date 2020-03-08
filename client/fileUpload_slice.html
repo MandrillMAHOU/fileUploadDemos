@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>file uplaod</title>
+</head>
+
+<body>
+  <div>
+    <div class="upload-wrapper">
+      选择文件:
+      <input type="file" id="upload" />
+    </div>
+    <button type="button" id="btn-submit">上 传</button>
+  </div>
+  <script>
+    function submitUpload() {
+      let originFile = document.getElementById('upload').files[0];
+      let chunks = sliceFile(originFile);
+      let chunkCount = chunks.length;
+      let sentCount = 0; // 已完成上传的数量
+      const flag = Math.random().toFixed(3); //  // 标识位，全部上传完成后服务器合并文件用
+      // console.log(chunks);
+      chunks.forEach((chunk, index) => {
+        let fd = new FormData();
+        fd.append('file', chunk);
+        fd.append('index', index);
+        fd.append('flag', flag);
+        xhrSend(fd, () => {
+          sentCount++;
+          // 全部切片上传完成之后执行的cb
+          if (sentCount === chunkCount) {
+            let mergeFd = new FormData();
+            mergeFd.append('type', 'merge');
+            mergeFd.append('filename', originFile.name);
+            mergeFd.append('chunkCount', chunkCount);
+            mergeFd.append('flag', flag);
+            xhrSend(mergeFd);
+          }
+        });
+      });
+    }
+    // 切割文件
+    function sliceFile(file) {
+      // File继承了Blob对象，可以使用Blob.slice(start, end)方法对文件进行切割
+      let sliceSize = 100 * 1024; // 100kb
+      let chunks = [];
+      const { size } = file;
+      if (size > sliceSize) {
+        let start = 0;
+        let end = sliceSize;
+        let chunk;
+        while(start < size) {
+          chunk = file.slice(start, Math.min(end, size));
+          chunks.push(chunk);
+          start += sliceSize;
+          end += sliceSize;
+        }
+      } else {
+        chunks.push(file.slice(0));
+      }
+      return chunks; 
+    }
+
+    function xhrSend(fd, cb) {
+      let xhr = new XMLHttpRequest();
+      xhr.open('POST', 'http://localhost:8100/', true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+          // console.log(xhr.responseText);
+          cb && cb();
+        }
+      }
+      xhr.send(fd);
+    }
+    document.getElementById('btn-submit').addEventListener('click', submitUpload);
+  </script>
+</body>
+
+</html>

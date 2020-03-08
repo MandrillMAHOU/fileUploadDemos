@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>file uplaod</title>
+  <style>
+    #progress {
+      width: 1000px;
+      height: 30px;
+      background: lightgray;
+    }
+
+    #progress .bar {
+      background: red;
+      height: 100%;
+      width: 0;
+    }
+
+    #progress .bar.green {
+      background: green;
+    }
+  </style>
+</head>
+
+<body>
+  <div>
+    <div class="upload-wrapper">
+      选择文件(可多选):
+      <input type="file" id="upload" multiple />
+    </div>
+    上传进度：
+    <div id="progress">
+      <div class="bar"></div>
+    </div>
+    <button type="button" id="btn-submit">上 传</button>
+  </div>
+  <script>
+    function submitUpload() {
+      let progressBar = document.querySelector('.bar');
+      let fileList = document.getElementById('upload').files;
+      progressBar.style.width = '0';
+      progressBar.classList.remove('green');
+
+      let fd = new FormData();
+      for (let i = 0; i < fileList.length; i++) {
+        fd.append(`f1`, fileList[i]); // 多个文件同一个key，上传之后后台接受到f1: [{file1}, {file2}, ...]
+      }
+
+      let xhr = new XMLHttpRequest();
+      xhr.open('POST', 'http://localhost:8100/', true);
+
+      xhr.onreadystatechange = function () {
+        // xhr.readyState: 
+        // 0 - UNSENT	代理被创建，但尚未调用 open() 方法。
+        // 1 - OPENED	open() 方法已经被调用。
+        // 2 - HEADERS_RECEIVED	send() 方法已经被调用，响应头也已经被接收。
+        // 3 - LOADING	下载中； responseText 属性已经包含部分数据。
+        // 4 - DONE	请求操作已经完成。这意味着数据传输已经彻底完成或失败。
+        if (xhr.readyState === 4) {
+          console.log('===完成==='); // 可能是上传完成也可能是失败
+        }
+      }
+
+      // ⚠️XMLHttpRequestEventTarget.onprogress 是在 XMLHttpRequest 完成之前周期性调用的函数。
+      xhr.onprogress = updateProgress; // 不需要，显示的是例如get请求获取数据下载时的过程回调
+      xhr.upload.onprogress = updateProgress; // xhr.upload属性返回一个XMLHttpRequestUpload对象，用来表示上传的进度。这个对象也是XMLHttpRequestEventTarget所以可以使用监听progress事件
+
+      // event - ProgressEvent对象，用来测量http底层操作进度
+      function updateProgress(event) {
+        console.log(event);
+        if (event.lengthComputable) {
+          // event.loaded  已传输的数据量
+          // event.total  总共的数据量
+          let completedPercent = (event.loaded / event.total * 100).toFixed(2);
+          progressBar.style.width = completedPercent + '%';
+          progressBar.innerHTML = completedPercent + '%';
+          if (completedPercent > 50) {
+            progressBar.classList.add('green');
+          }
+          console.log('已上传: ', completedPercent);
+        }
+      }
+      //注意 send 一定要写在最下面，否则onprogress只会执行最后一次 也就是100%的时候
+      xhr.send(fd);
+    }
+    document.getElementById('btn-submit').addEventListener('click', submitUpload);
+  </script>
+</body>
+
+</html>

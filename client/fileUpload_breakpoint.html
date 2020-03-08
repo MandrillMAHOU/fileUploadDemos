@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>file uplaod</title>
+</head>
+
+<body>
+  <div>
+    <div class="upload-wrapper">
+      选择文件:
+      <input type="file" id="upload" />
+    </div>
+    <button type="button" id="btn-submit">上 传</button>
+  </div>
+  <script>
+    let curRequest = 0; // 并发数量
+    let requestTimer = {}; // 并发timer
+    const MAX_REQUEST = 4; // 最大并发请求
+    const storageKey = 'fileUploadStatus'; // localStorage key，保存切片上传状态
+
+    function submitUpload() {
+      let originFile = document.getElementById('upload').files[0];
+      let chunks = sliceFile(originFile);
+      let chunkCount = chunks.length;
+      let sentCount = 0; // 已完成上传的数量
+      // 标识位，因为有断点续传，要根据文件来创建，不能直接用随机数或者当前时间
+      const flag = originFile.lastModified || 'testflag';
+      chunks.forEach((chunk, index) => {
+        // 如果已经上传过，就不再上传
+        let uploadStatus = getUploadStatus();
+        if (uploadStatus.includes(index)) {
+          console.log(`===切片${index}已经上传过===`);
+          sentCount++; // 已上传的切片数量
+          return;
+        }
+
+        let fd = new FormData();
+        fd.append('file', chunk);
+        fd.append('index', index);
+        fd.append('flag', flag);
+        // 请求完成之后的回调
+        let xhrCb = () => {
+          sentCount++;
+          if (sentCount === chunkCount) {
+            sendMerge();
+          }
+        };
+        // 控制并发数量
+        if (curRequest < MAX_REQUEST) {
+          xhrSend(fd, index, xhrCb);
+        } else {
+          requestTimer[index] = setInterval(() => {
+            if (curRequest < MAX_REQUEST) {
+              xhrSend(fd, index, xhrCb);
+            }
+          }, 2000);
+        }
+      });
+      // 发送合并请求
+      function sendMerge() {
+        let mergeFd = new FormData();
+        mergeFd.append('type', 'merge');
+        mergeFd.append('filename', originFile.name);
+        mergeFd.append('chunkCount', chunkCount);
+        mergeFd.append('flag', flag);
+        xhrSend(mergeFd);
+      }
+    }
+    // 切片上传成功，保存上传状态，实际应用时使用hash值，此处使用index代替
+    function saveUploadStatus(index) {
+      let uploadStatus = getUploadStatus();
+      if (!uploadStatus.includes(index)) {
+        uploadStatus.push(index);
+      }
+      localStorage.setItem(storageKey, JSON.stringify(uploadStatus));
+    }
+    // 获取上传状态数组
+    function getUploadStatus() {
+      return JSON.parse(localStorage.getItem(storageKey)) || [];
+    }
+    // 切割文件
+    function sliceFile(file) {
+      // File继承了Blob对象，可以使用Blob.slice(start, end)方法对文件进行切割
+      let sliceSize = 100 * 1024; // 100kb
+      let chunks = [];
+      const { size } = file;
+      if (size > sliceSize) {
+        let start = 0;
+        let end = sliceSize;
+        let chunk;
+        while(start < size) {
+          chunk = file.slice(start, Math.min(end, size));
+          chunks.push(chunk);
+          start += sliceSize;
+          end += sliceSize;
+        }
+      } else {
+        chunks.push(file.slice(0));
+      }
+      return chunks; 
+    }
+    // 发送请求
+    function xhrSend(fd, index, cb) {
+      clearInterval(requestTimer[index]); // 请求发送，清除interval
+      let xhr = new XMLHttpRequest();
+      xhr.open('POST', 'http://localhost:8100/', true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+          curRequest--;
+          if (index || index === 0) {
+            saveUploadStatus(index); // 保存切片上传状态
+          }
+          // 全部切片上传成功且合并完成，清除localstorage上传状态
+          if(xhr.responseText === 'merge finish') {
+            localStorage.removeItem(storageKey);
+          }
+          cb && cb();
+        }
+      }
+      xhr.send(fd);
+      curRequest++;
+    }
+
+    document.getElementById('btn-submit').addEventListener('click', submitUpload);
+  </script>
+</body>
+
+</html>
